@@ -504,7 +504,7 @@ static void Map() {
                   // free(speeds);
                   // MPI_Irecv(&vehicleanddata[i], sizeof(struct VehicleandData), MPI_BYTE, rank, DATAPACK_TAG, MPI_COMM_WORLD, &requests[requestCount++]);
                   // MPI_Wait(&requests[requestCount-1], MPI_STATUS_IGNORE);
-                  MPI_Irecv(&a, 1, MPI_INT, rank, DATAPACK_TAG, MPI_COMM_WORLD, &requests[requestCount++]);
+                  MPI_Recv(&a, 1, MPI_INT, rank, DATAPACK_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                   MPI_Wait(&requests[requestCount-1], MPI_STATUS_IGNORE);
                   //打印已经处理了多少辆车
                   printf("vehicle %d has been processed\n", i);
@@ -512,7 +512,6 @@ static void Map() {
               }
           
           }
-          i = 200;
           //printf("vehicle %d's active has been checked\n", i);
       }
       //打印已经处理了一次循环
