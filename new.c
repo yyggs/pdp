@@ -10,7 +10,7 @@
 
 #define VERBOSE_ROUTE_PLANNER 0
 #define LARGE_NUM 99999999.0
-#define BUFFER_SIZE 1024*1024*10
+#define BUFFER_SIZE 1024*1024*10*10
 
 #define MAX_ROAD_LEN 100
 #define MAX_VEHICLES 200
@@ -229,21 +229,24 @@ static void Vehicle() {
   dataPacket.passengers_stranded = 0;
   dataPacket.vehicles_crashed = 0;
   struct VehicleforMPI vehicleMPI;
-  MPI_Recv(&vehicleMPI, sizeof(vehicleMPI), MPI_BYTE, MPI_ANY_SOURCE, VEHICLE_TAG, MPI_COMM_WORLD, &status);
+
+  int a;
+  MPI_Recv(&a, 1, MPI_INT, 1, VEHICLE_TAG, MPI_COMM_WORLD, &status);
+  //MPI_Recv(&vehicleMPI, sizeof(vehicleMPI), MPI_BYTE, MPI_ANY_SOURCE, VEHICLE_TAG, MPI_COMM_WORLD, &status);
   maprank = status.MPI_SOURCE;
   //print vehicleMPI
 
-  struct VehicleStruct vehicle;
-  MPItoVehicle(&vehicleMPI, &vehicle);
+  // struct VehicleStruct vehicle;
+  // MPItoVehicle(&vehicleMPI, &vehicle);
 
-  struct JunctionStruct* junction;
-  if(vehicle.roadOn != NULL){
-    junction = vehicle.roadOn->to;
-  }else if(vehicle.currentJunction != NULL){
-    junction = vehicle.currentJunction;
-  }else{
-    printf("vehicle is not on road or junction\n");
-  }
+  // struct JunctionStruct* junction;
+  // if(vehicle.roadOn != NULL){
+  //   junction = vehicle.roadOn->to;
+  // }else if(vehicle.currentJunction != NULL){
+  //   junction = vehicle.currentJunction;
+  // }else{
+  //   printf("vehicle is not on road or junction\n");
+  // }
   //int* speeds = (int*)malloc(junction->num_roads * sizeof(int));
   //printf("num_roads: %d\n", junction->num_roads);
   // MPI_Recv(speeds, junction->num_roads, MPI_INT, maprank, SPEED_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -255,10 +258,11 @@ static void Vehicle() {
   // handleVehicleUpdate(&vehicle, &dataPacket);
   // VehicletoMPI(&vehicle, &vehicleMPI);
 
-  struct VehicleandData vehicleanddata;
-  vehicleanddata.vehicle = vehicleMPI;
-  vehicleanddata.dataPacket = dataPacket;
-  MPI_Bsend(&vehicleanddata, sizeof(struct VehicleandData), MPI_BYTE, maprank, DATAPACK_TAG, MPI_COMM_WORLD);
+  // struct VehicleandData vehicleanddata;
+  // vehicleanddata.vehicle = vehicleMPI;
+  // vehicleanddata.dataPacket = dataPacket;
+  MPI_Bsend(&a, 1, MPI_INT, maprank, DATAPACK_TAG, MPI_COMM_WORLD);
+  //MPI_Bsend(&vehicleanddata, sizeof(struct VehicleandData), MPI_BYTE, maprank, DATAPACK_TAG, MPI_COMM_WORLD);
 
 }
 
@@ -423,6 +427,7 @@ static void Map() {
   printf("Starting simulation with %d junctions, %d roads and %d vehicles\n", num_junctions, num_roads, INITIAL_VEHICLES);
   while (elapsed_mins < MAX_MINS) {
       time_t current_seconds=getCurrentSeconds();
+      //printf("current_seconds: %ld\n", current_seconds);
       if (current_seconds != seconds) {
           seconds=current_seconds;
           if (seconds-start_seconds > 0) {
@@ -444,7 +449,7 @@ static void Map() {
               }
           }
       }
-
+      printf("elapsed_mins: %d\n", elapsed_mins);
       // State update for junctions
       for (int i=0;i<num_junctions;i++) {
           if (roadMap[i].hasTrafficLights && roadMap[i].num_roads > 0) {
@@ -463,43 +468,51 @@ static void Map() {
           }
       }
 
-      // State update for vehicles
+      //State update for vehicles
       for (int i=0;i<MAX_VEHICLES;i++) {
+
+        printf("vehicle %d's active is %d  i = %d \n", i, vehicles[i].active, i);
+        //ptint total_vehicles
           while (vehicles[i].active) {
               int rank = startWorkerProcess();
-              //printf("rank: %d started\n", rank);
+              printf("rank: %d started\n", rank);
               if(rank != -1){
                   indices[i] = 1;
                   int data[1];
                   data[0]=VEHICLE;
-                  MPI_Bsend(data, 1, MPI_INT, rank, CONTROL_TAG, MPI_COMM_WORLD);
+                  //MPI_Bsend(data, 1, MPI_INT, rank, CONTROL_TAG, MPI_COMM_WORLD);
+                  MPI_Ssend(data, 1, MPI_INT, rank, CONTROL_TAG, MPI_COMM_WORLD);
+                  // struct VehicleforMPI vehicleMPI;
+                  // VehicletoMPI(&vehicles[i], &vehicleMPI);
+                  // //printVehicle(&vehicles[i]);
+                  int a = 1;
+                  MPI_Ssend(&a, 1, MPI_INT, 2, VEHICLE_TAG, MPI_COMM_WORLD);
+                  //MPI_Ssend(&vehicleMPI, sizeof(vehicleMPI), MPI_BYTE, rank, VEHICLE_TAG, MPI_COMM_WORLD);
 
-                  struct VehicleforMPI vehicleMPI;
-                  VehicletoMPI(&vehicles[i], &vehicleMPI);
-                  //printVehicle(&vehicles[i]);
-
-                  MPI_Bsend(&vehicleMPI, sizeof(vehicleMPI), MPI_BYTE, rank, VEHICLE_TAG, MPI_COMM_WORLD);
-
-                  //send current speed to vehicle
-                  struct JunctionStruct *junction;
-                  if(vehicles[i].roadOn != NULL){
-                    junction = vehicles[i].roadOn->to;
-                  }else if(vehicles[i].currentJunction != NULL){
-                    junction = vehicles[i].currentJunction;
-                  }
+                  // //send current speed to vehicle
+                  // struct JunctionStruct *junction;
+                  // if(vehicles[i].roadOn != NULL){
+                  //   junction = vehicles[i].roadOn->to;
+                  // }else if(vehicles[i].currentJunction != NULL){
+                  //   junction = vehicles[i].currentJunction;
+                  // }
                   // int* speeds = (int*)malloc(junction->num_roads * sizeof(int));
                   // for(int j = 0; j < junction->num_roads; j++) {
                   //   speeds[j] = junction->roads[j].currentSpeed;
                   // }
                   // MPI_Bsend(speeds, junction->num_roads, MPI_INT, rank, SPEED_TAG, MPI_COMM_WORLD);
                   // free(speeds);
-                  MPI_Irecv(&vehicleanddata[i], sizeof(struct VehicleandData), MPI_BYTE, rank, DATAPACK_TAG, MPI_COMM_WORLD, &requests[requestCount++]);
+                  // MPI_Irecv(&vehicleanddata[i], sizeof(struct VehicleandData), MPI_BYTE, rank, DATAPACK_TAG, MPI_COMM_WORLD, &requests[requestCount++]);
+                  // MPI_Wait(&requests[requestCount-1], MPI_STATUS_IGNORE);
+                  MPI_Irecv(&a, 1, MPI_INT, rank, DATAPACK_TAG, MPI_COMM_WORLD, &requests[requestCount++]);
                   MPI_Wait(&requests[requestCount-1], MPI_STATUS_IGNORE);
                   //打印已经处理了多少辆车
-                  //printf("vehicle %d has been processed\n", i);
+                  printf("vehicle %d has been processed\n", i);
                   break;
               }
+          
           }
+          i = 200;
           //printf("vehicle %d's active has been checked\n", i);
       }
       //打印已经处理了一次循环
