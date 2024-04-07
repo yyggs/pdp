@@ -14,7 +14,7 @@
 
 #define MAX_ROAD_LEN 100
 #define MAX_VEHICLES 1000
-#define MAX_MINS 100
+#define MAX_MINS 10
 #define MIN_LENGTH_SECONDS 2
 #define MAX_NUM_ROADS_PER_JUNCTION 50
 #define SUMMARY_FREQUENCY 5
@@ -53,7 +53,7 @@ enum MPI_TAG {
   CONTROL_TAG,
   VEHICLE_TAG,
   DATAPACK_TAG,
-  SPEED_TAG
+  MAPINFO_TAG
 };
 
 enum ReadMode {
@@ -115,9 +115,18 @@ struct DataPacket{
   int vehicles_crashed;
 };
 
+struct MapupdateInfo{
+  int junction_id;
+  int total_number_vehicles;
+  int total_number_crashes;
+  int num_vehicles_update;
+};
+
 struct VehicleandData{
   struct VehicleforMPI vehicle;
   struct DataPacket dataPacket;
+  struct MapupdateInfo mapupdateInfo;
+
 };
 
 static void handleVehicleUpdate(struct VehicleStruct* , struct DataPacket*);
@@ -147,6 +156,7 @@ void printVehicle(struct VehicleStruct*);
 
 struct JunctionStruct * roadMap;
 struct VehicleStruct * vehicles;
+struct MapupdateInfo mapupdateInfo;
 int num_junctions, num_roads=0;
 int elapsed_mins=0;
 int total_vehicles=0, passengers_delivered=0, vehicles_exhausted_fuel=0, passengers_stranded=0, vehicles_crashed=0;
@@ -201,14 +211,8 @@ static void ActorCode() {
     int parentId = getCommandData();
     MPI_Recv(data, 1, MPI_INT, parentId, CONTROL_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     if (data[0] == VEHICLE) {
-      // int rank;
-      // MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-      // printf("my vehicle rank is %d\n", rank);
       Vehicle();
     } else if (data[0] == MAP) {
-      // int rank;
-      // MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-      // printf("my rank is %d\n", rank);
       Map();
     }
     workerStatus=workerSleep();
@@ -226,6 +230,11 @@ static void Vehicle() {
   dataPacket.vehicles_crashed = 0;
   struct VehicleforMPI vehicleMPI;
 
+  mapupdateInfo.junction_id = -1;
+  mapupdateInfo.total_number_vehicles = 0;
+  mapupdateInfo.total_number_crashes = 0;
+  mapupdateInfo.num_vehicles_update = 0;
+
   MPI_Recv(&vehicleMPI, sizeof(vehicleMPI), MPI_BYTE, MPI_ANY_SOURCE, VEHICLE_TAG, MPI_COMM_WORLD, &status);
   maprank = status.MPI_SOURCE;
 
@@ -240,13 +249,20 @@ static void Vehicle() {
   }else{
     printf("vehicle is not on road or junction\n");
   }
-  int* speeds = (int*)malloc(junction->num_roads * sizeof(int));
+  int* mapinfo = (int*)malloc((junction->num_roads + num_junctions + num_junctions) * sizeof(int));
   //printf("num_roads: %d\n", junction->num_roads);
-  MPI_Recv(speeds, junction->num_roads, MPI_INT, maprank, SPEED_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  MPI_Recv(mapinfo, junction->num_roads + num_junctions + num_junctions, MPI_INT, maprank, MAPINFO_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   for(int j = 0; j < junction->num_roads; j++) {
-    junction->roads[j].currentSpeed = speeds[j];
+    junction->roads[j].currentSpeed = mapinfo[j];
   }
-  free(speeds);
+  for(int j = junction->num_roads; j < junction->num_roads + num_junctions; j++) {
+    roadMap[j-junction->num_roads].trafficLightsRoadEnabled = mapinfo[j];
+  }
+  for(int j = junction->num_roads + num_junctions; j < junction->num_roads + num_junctions + num_junctions; j++) {
+    roadMap[j-junction->num_roads-num_junctions].num_vehicles = mapinfo[j];
+    //printf("roadMap[%d].total_number_vehicles: %d\n", j-junction->num_roads-num_junctions, roadMap[j-junction->num_roads-num_junctions].total_number_vehicles);
+  }
+  free(mapinfo);
 
   handleVehicleUpdate(&vehicle, &dataPacket);
   VehicletoMPI(&vehicle, &vehicleMPI);
@@ -254,7 +270,10 @@ static void Vehicle() {
   struct VehicleandData vehicleanddata;
   vehicleanddata.vehicle = vehicleMPI;
   vehicleanddata.dataPacket = dataPacket;
-  
+  vehicleanddata.mapupdateInfo = mapupdateInfo;
+  //print mapupdateInfo.num_vehicles_update
+  //printf("num_vehicles_update: %d\n", mapupdateInfo.num_vehicles_update);
+
   MPI_Ssend(&vehicleanddata, sizeof(struct VehicleandData), MPI_BYTE, maprank, DATAPACK_TAG, MPI_COMM_WORLD);
 
 }
@@ -327,6 +346,7 @@ static void handleVehicleUpdate(struct VehicleStruct* vehicle, struct DataPacket
   }
   if (vehicle->roadOn != NULL && vehicle->currentJunction == NULL) {
     // Means that the vehicle is currently on a road
+    
     time_t sec = getCurrentSeconds();
     int latest_time = sec - vehicle->last_distance_check_secs;
     if (latest_time < 1) return;
@@ -340,13 +360,17 @@ static void handleVehicleUpdate(struct VehicleStruct* vehicle, struct DataPacket
       vehicle->remaining_distance = 0;
       vehicle->speed = 0;
       vehicle->currentJunction = vehicle->roadOn->to;
+      mapupdateInfo.junction_id = vehicle->currentJunction->id;
       vehicle->currentJunction->num_vehicles++;
+      mapupdateInfo.num_vehicles_update++;
       vehicle->currentJunction->total_number_vehicles++;
+      mapupdateInfo.total_number_vehicles++;
       vehicle->roadOn->numVehiclesOnRoad--;
       vehicle->roadOn = NULL;
     }
   }
   if (vehicle->currentJunction != NULL) {
+    mapupdateInfo.junction_id = vehicle->currentJunction->id;
     if (vehicle->roadOn == NULL) {
       // If the road is NULL then the vehicle is on a junction and not on a road
       if (vehicle->currentJunction->id == vehicle->dest) {
@@ -381,6 +405,7 @@ static void handleVehicleUpdate(struct VehicleStruct* vehicle, struct DataPacket
       // Need to check that we can go, otherwise need to wait until road enabled by traffic light
       take_road = vehicle->roadOn == &vehicle->currentJunction->roads[vehicle->currentJunction->trafficLightsRoadEnabled];
     } else {
+      //printf("num_vehicles: %d\n", vehicle->currentJunction->num_vehicles);
       // If not traffic light then there is a chance of collision
       int collision = getRandomInteger(0, 8) * vehicle->currentJunction->num_vehicles;
       if (collision > 40) {
@@ -388,7 +413,8 @@ static void handleVehicleUpdate(struct VehicleStruct* vehicle, struct DataPacket
         dataPacket->passengers_stranded += vehicle->passengers;
         dataPacket->vehicles_crashed++;
         vehicle->active = 0;
-        vehicle->currentJunction->total_number_crashes++; //!!!!!!!!!路口变量需要更新
+        vehicle->currentJunction->total_number_crashes++;
+        mapupdateInfo.total_number_crashes = 1;
       }
       take_road = 1;
     }
@@ -396,9 +422,13 @@ static void handleVehicleUpdate(struct VehicleStruct* vehicle, struct DataPacket
     if (take_road) {
       vehicle->last_distance_check_secs = getCurrentSeconds();
       vehicle->currentJunction->num_vehicles--;
+      mapupdateInfo.num_vehicles_update--;
+      //printf("##num_vehicles_update: %d\n", mapupdateInfo.num_vehicles_update);
       vehicle->currentJunction = NULL;
     }
   }
+  //print mapupdateInfo.num_vehicles_update
+  //rintf("num_vehicles_update: %d\n", mapupdateInfo.num_vehicles_update);
 }
 
 static void cleanindices(int* indices) {
@@ -483,12 +513,19 @@ static void Map() {
                   }else if(vehicles[i].currentJunction != NULL){
                     junction = vehicles[i].currentJunction;
                   }
-                  int* speeds = (int*)malloc(junction->num_roads * sizeof(int));
+                  int* mapinfo = (int*)malloc((junction->num_roads + num_junctions + num_junctions) * sizeof(int));
                   for(int j = 0; j < junction->num_roads; j++) {
-                    speeds[j] = junction->roads[j].currentSpeed;
+                    mapinfo[j] = junction->roads[j].currentSpeed;
                   }
-                  MPI_Bsend(speeds, junction->num_roads, MPI_INT, rank, SPEED_TAG, MPI_COMM_WORLD);
-                  free(speeds);
+                  for(int j = junction->num_roads; j < junction->num_roads + num_junctions; j++) {
+                    mapinfo[j] = roadMap[j-junction->num_roads].trafficLightsRoadEnabled;
+                  }
+                  for(int j = junction->num_roads + num_junctions; j < junction->num_roads + num_junctions + num_junctions; j++) {
+                    mapinfo[j] = roadMap[j-junction->num_roads-num_junctions].num_vehicles;
+                  }
+
+                  MPI_Bsend(mapinfo, junction->num_roads + num_junctions+ num_junctions, MPI_INT, rank, MAPINFO_TAG, MPI_COMM_WORLD);
+                  free(mapinfo);
                   MPI_Irecv(&vehicleanddata[i], sizeof(struct VehicleandData), MPI_BYTE, rank, DATAPACK_TAG, MPI_COMM_WORLD, &requests[request_index]);
                   request_index++;
                   //printf("vehicle %d has been processed\n", i);
@@ -508,14 +545,26 @@ static void Map() {
           passengers_stranded += vehicleanddata[i].dataPacket.passengers_stranded;
           vehicles_exhausted_fuel += vehicleanddata[i].dataPacket.vehicles_exhausted_fuel;
           vehicles_crashed += vehicleanddata[i].dataPacket.vehicles_crashed;
+          if(vehicleanddata[i].mapupdateInfo.junction_id != -1){
+            roadMap[vehicleanddata[i].mapupdateInfo.junction_id].total_number_vehicles += vehicleanddata[i].mapupdateInfo.total_number_vehicles;
+            roadMap[vehicleanddata[i].mapupdateInfo.junction_id].total_number_crashes += vehicleanddata[i].mapupdateInfo.total_number_crashes;
+            roadMap[vehicleanddata[i].mapupdateInfo.junction_id].num_vehicles += vehicleanddata[i].mapupdateInfo.num_vehicles_update;
+            //print roadMap[mapupdateInfo.junction_id].num_vehicles
+            //printf("roadMap[%d].num_vehicles: %d\n", vehicleanddata[i].mapupdateInfo.junction_id, roadMap[vehicleanddata[i].mapupdateInfo.junction_id].num_vehicles);
+            
+            //printf("num_vehicles_update: %d\n", vehicleanddata[i].mapupdateInfo.num_vehicles_update);
+          }
         }
       }
       cleanindices(indices);
+      //update map
+      
   }
   // On termination display a final summary and write detailed information to file
   printf("Finished after %d mins: %d vehicles, %d passengers delivered, %d passengers stranded, %d crashed vehicles, %d vehicles exhausted fuel\n",
           elapsed_mins, total_vehicles, passengers_delivered, passengers_stranded, vehicles_crashed, vehicles_exhausted_fuel);
   writeDetailedInfo();
+  shutdownPool();
 }
 
 

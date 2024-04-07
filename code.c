@@ -236,6 +236,7 @@ static void handleVehicleUpdate(int i) {
       // Need to check that we can go, otherwise need to wait until road enabled by traffic light
       take_road=vehicles[i].roadOn == &vehicles[i].currentJunction->roads[vehicles[i].currentJunction->trafficLightsRoadEnabled];
     } else {
+      //printf("num_vehicles: %d\n", vehicles[i].currentJunction->num_vehicles);
       // If not traffic light then there is a chance of collision
       int collision=getRandomInteger(0,8)*vehicles[i].currentJunction->num_vehicles;
       if (collision > 40) {
