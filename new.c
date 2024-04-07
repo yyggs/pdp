@@ -13,8 +13,8 @@
 #define BUFFER_SIZE 1024*1024*10*10
 
 #define MAX_ROAD_LEN 100
-#define MAX_VEHICLES 200
-#define MAX_MINS 5
+#define MAX_VEHICLES 1000
+#define MAX_MINS 100
 #define MIN_LENGTH_SECONDS 2
 #define MAX_NUM_ROADS_PER_JUNCTION 50
 #define SUMMARY_FREQUENCY 5
@@ -153,7 +153,6 @@ int total_vehicles=0, passengers_delivered=0, vehicles_exhausted_fuel=0, passeng
 int maprank = -1;
 
 int size = 0;
-int debug = 0;
 int main(int argc, char *argv[]) {
 
   MPI_Init(&argc, &argv);
@@ -181,9 +180,6 @@ int main(int argc, char *argv[]) {
     ActorCode();
   } else if (statusCode == 2) {
     createInitialActor(MAP);
-    // for (int i = 0; i < INITIAL_VEHICLES; i++) {
-    //   createInitialActor(VEHICLE);  //可能无法支持所有的初始汽车
-    // }
     int masterStatus = masterPoll();
     while (masterStatus) {
       masterStatus=masterPoll();
@@ -245,14 +241,14 @@ static void Vehicle() {
     printf("vehicle is not on road or junction\n");
   }
   int* speeds = (int*)malloc(junction->num_roads * sizeof(int));
-  printf("num_roads: %d\n", junction->num_roads);
+  //printf("num_roads: %d\n", junction->num_roads);
   MPI_Recv(speeds, junction->num_roads, MPI_INT, maprank, SPEED_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   for(int j = 0; j < junction->num_roads; j++) {
     junction->roads[j].currentSpeed = speeds[j];
   }
   free(speeds);
 
-  //handleVehicleUpdate(&vehicle, &dataPacket);
+  handleVehicleUpdate(&vehicle, &dataPacket);
   VehicletoMPI(&vehicle, &vehicleMPI);
 
   struct VehicleandData vehicleanddata;
@@ -416,13 +412,14 @@ static void Map() {
   struct VehicleandData* vehicleanddata = (struct VehicleandData*)malloc(sizeof(struct VehicleandData) * MAX_VEHICLES);
   int indices[MAX_VEHICLES];
   cleanindices(indices);
-  MPI_Request* requests = (MPI_Request*) malloc(sizeof(MPI_Request) * (size - 2));
   int requestCount = 0;
   time_t seconds=0;
   time_t start_seconds=getCurrentSeconds();
   
   printf("Starting simulation with %d junctions, %d roads and %d vehicles\n", num_junctions, num_roads, INITIAL_VEHICLES);
   while (elapsed_mins < MAX_MINS) {
+      MPI_Request* requests = (MPI_Request*) malloc(sizeof(MPI_Request) * (MAX_VEHICLES));
+      int request_index = 0;
       time_t current_seconds=getCurrentSeconds();
       //printf("current_seconds: %ld\n", current_seconds);
       if (current_seconds != seconds) {
@@ -430,11 +427,10 @@ static void Map() {
           if (seconds-start_seconds > 0) {
               if ((seconds-start_seconds) % MIN_LENGTH_SECONDS == 0) {
                   elapsed_mins++;
-                  debug = 1;
                   // Add a random number of new vehicles to the simulation
                   int num_new_vehicles=getRandomInteger(100, 200);
                   //print num_new_vehicles
-                  printf("num_new_vehicles: %d\n", num_new_vehicles);
+                  //printf("num_new_vehicles: %d\n", num_new_vehicles);
                   for (int i=0;i<num_new_vehicles;i++) {
                       activateRandomVehicle();
                   }
@@ -446,7 +442,7 @@ static void Map() {
               }
           }
       }
-      printf("elapsed_mins: %d\n", elapsed_mins);
+      //printf("elapsed_mins: %d\n", elapsed_mins);
       // State update for junctions
       for (int i=0;i<num_junctions;i++) {
           if (roadMap[i].hasTrafficLights && roadMap[i].num_roads > 0) {
@@ -467,12 +463,9 @@ static void Map() {
 
       //State update for vehicles
       for (int i=0;i<MAX_VEHICLES;i++) {
-
-        printf("vehicle %d's active is %d  i = %d \n", i, vehicles[i].active, i);
-        //ptint total_vehicles
           while (vehicles[i].active) {
               int rank = startWorkerProcess();
-              printf("rank: %d started\n", rank);
+              //printf("rank: %d started\n", rank);
               if(rank != -1){
                   indices[i] = 1;
                   int data[1];
@@ -496,15 +489,17 @@ static void Map() {
                   }
                   MPI_Bsend(speeds, junction->num_roads, MPI_INT, rank, SPEED_TAG, MPI_COMM_WORLD);
                   free(speeds);
-                   MPI_Irecv(&vehicleanddata[i], sizeof(struct VehicleandData), MPI_BYTE, rank, DATAPACK_TAG, MPI_COMM_WORLD, &requests[rank - 2]);
-                  printf("vehicle %d has been processed\n", i);
+                  MPI_Irecv(&vehicleanddata[i], sizeof(struct VehicleandData), MPI_BYTE, rank, DATAPACK_TAG, MPI_COMM_WORLD, &requests[request_index]);
+                  request_index++;
+                  //printf("vehicle %d has been processed\n", i);
                   break;
               }
           
           }
           //printf("vehicle %d's active has been checked\n", i);
       }
-      MPI_Waitall(size - 2, requests, MPI_STATUSES_IGNORE);
+      MPI_Waitall(request_index, requests, MPI_STATUSES_IGNORE);
+      free(requests);
       for(int i = 0; i < MAX_VEHICLES; i++) {
         if(indices[i] != -1) {
           struct VehicleforMPI vehicleMPI = vehicleanddata[i].vehicle;
@@ -520,7 +515,6 @@ static void Map() {
   // On termination display a final summary and write detailed information to file
   printf("Finished after %d mins: %d vehicles, %d passengers delivered, %d passengers stranded, %d crashed vehicles, %d vehicles exhausted fuel\n",
           elapsed_mins, total_vehicles, passengers_delivered, passengers_stranded, vehicles_crashed, vehicles_exhausted_fuel);
-  free(requests);
   writeDetailedInfo();
 }
 
@@ -712,16 +706,9 @@ static int findAppropriateRoad(int dest_junction, struct JunctionStruct * juncti
 }
 
 static int planRoute(int source_id, int dest_id) {
-  //print num_junctions
-  if(debug == 1){
-    printf("num_junctions: %d\n", num_junctions);
-  }
-  if (VERBOSE_ROUTE_PLANNER) printf("Search for route from %d to %d\n", source_id, dest_id);
+  //if (VERBOSE_ROUTE_PLANNER) printf("Search for route from %d to %d\n", source_id, dest_id);
   double * dist=(double*) malloc(sizeof(double) * num_junctions);
   char * active=(char*) malloc(sizeof(char) * num_junctions);
-  if(debug == 1){
-    printf("Search for route from %d to %d\n", source_id, dest_id);
-  }
   struct JunctionStruct ** prev=(struct JunctionStruct **) malloc(sizeof( struct JunctionStruct *) * num_junctions);
   
   int activeJunctions=num_junctions;

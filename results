@@ -1,28 +1,28 @@
-Junction 0: 28 total vehicles and 0 crashes
+Junction 0: 112 total vehicles and 0 crashes
 --> Road from 0 to 1: Total vehicles 0 and 0 maximum concurrently
 --> Road from 0 to 2: Total vehicles 0 and 0 maximum concurrently
-Junction 1: 27 total vehicles and 0 crashes
+Junction 1: 113 total vehicles and 0 crashes
 --> Road from 1 to 0: Total vehicles 0 and 0 maximum concurrently
 --> Road from 1 to 6: Total vehicles 0 and 0 maximum concurrently
-Junction 2: 24 total vehicles and 0 crashes
+Junction 2: 112 total vehicles and 0 crashes
 --> Road from 2 to 0: Total vehicles 0 and 0 maximum concurrently
 --> Road from 2 to 3: Total vehicles 0 and 0 maximum concurrently
-Junction 3: 27 total vehicles and 0 crashes
+Junction 3: 109 total vehicles and 0 crashes
 --> Road from 3 to 2: Total vehicles 0 and 0 maximum concurrently
 --> Road from 3 to 4: Total vehicles 0 and 0 maximum concurrently
-Junction 4: 24 total vehicles and 0 crashes
+Junction 4: 95 total vehicles and 0 crashes
 --> Road from 4 to 3: Total vehicles 0 and 0 maximum concurrently
 --> Road from 4 to 5: Total vehicles 0 and 0 maximum concurrently
-Junction 5: 22 total vehicles and 0 crashes
+Junction 5: 94 total vehicles and 0 crashes
 --> Road from 5 to 4: Total vehicles 0 and 0 maximum concurrently
 --> Road from 5 to 6: Total vehicles 0 and 0 maximum concurrently
-Junction 6: 26 total vehicles and 0 crashes
+Junction 6: 103 total vehicles and 0 crashes
 --> Road from 6 to 1: Total vehicles 0 and 0 maximum concurrently
 --> Road from 6 to 5: Total vehicles 0 and 0 maximum concurrently
-Junction 7: 8 total vehicles and 0 crashes
+Junction 7: 32 total vehicles and 0 crashes
 --> Road from 7 to 8: Total vehicles 0 and 0 maximum concurrently
 --> Road from 7 to 9: Total vehicles 0 and 0 maximum concurrently
-Junction 8: 5 total vehicles and 0 crashes
+Junction 8: 38 total vehicles and 0 crashes
 --> Road from 8 to 7: Total vehicles 0 and 0 maximum concurrently
-Junction 9: 9 total vehicles and 0 crashes
+Junction 9: 37 total vehicles and 0 crashes
 --> Road from 9 to 7: Total vehicles 0 and 0 maximum concurrently
